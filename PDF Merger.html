@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Merger</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background-color: #f9f9f9;
+    }
+    .container {
+      width: 100%;
+      max-width: 800px;
+      padding: 20px;
+      text-align: center;
+      background: #fff;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      border-radius: 8px;
+    }
+    h1 {
+      margin-top: 0;
+    }
+    #controls {
+      margin-bottom: 20px;
+    }
+    #filenameInput {
+      padding: 5px;
+      font-size: 1em;
+      width: 200px;
+      margin-left: 10px;
+    }
+    #fileList {
+      margin: 20px 0;
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 4px;
+      text-align: left;
+    }
+    .file-item {
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .file-name {
+      flex: 1;
+      margin-right: 10px;
+    }
+    button {
+      padding: 5px 10px;
+      margin: 0 2px;
+      font-size: 0.9em;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PDF Merger</h1>
+    
+    <div id="controls">
+      <button id="addFilesButton">Add PDF Files</button>
+      <input type="file" id="fileInput" accept="application/pdf" multiple style="display:none;">
+      <br><br>
+      <label for="filenameInput">Merged PDF Filename:</label>
+      <input type="text" id="filenameInput" value="merged.pdf">
+    </div>
+    
+    <div id="fileList">
+      <h3>Selected Files:</h3>
+      <ul id="files"></ul>
+    </div>
+    
+    <button id="mergeButton">Merg Files and Save To Download Folder!</button>
+    
+    <!-- PDF-lib library from CDN -->
+    <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+    
+    <script>
+      const fileInput = document.getElementById('fileInput');
+      const addFilesButton = document.getElementById('addFilesButton');
+      const mergeButton = document.getElementById('mergeButton');
+      const filesListElement = document.getElementById('files');
+      const filenameInput = document.getElementById('filenameInput');
+      
+      // Array to store selected PDF files
+      let pdfFiles = [];
+      
+      // Trigger file input when "Add PDF Files" button is clicked
+      addFilesButton.addEventListener('click', () => {
+        fileInput.click();
+      });
+      
+      // When files are selected, add them to our list
+      fileInput.addEventListener('change', (event) => {
+        const files = event.target.files;
+        for (const file of files) {
+          pdfFiles.push(file);
+        }
+        updateFileList();
+        // Clear the input so the same file can be added again if needed
+        fileInput.value = '';
+      });
+      
+      // Update the file list UI
+      function updateFileList() {
+        filesListElement.innerHTML = '';
+        pdfFiles.forEach((file, index) => {
+          const li = document.createElement('li');
+          li.className = 'file-item';
+          
+          const span = document.createElement('span');
+          span.textContent = file.name;
+          span.className = 'file-name';
+          
+          // Create Up and Down buttons
+          const upButton = document.createElement('button');
+          upButton.textContent = 'Up';
+          upButton.disabled = index === 0;
+          upButton.addEventListener('click', () => {
+            moveFile(index, -1);
+          });
+          
+          const downButton = document.createElement('button');
+          downButton.textContent = 'Down';
+          downButton.disabled = index === pdfFiles.length - 1;
+          downButton.addEventListener('click', () => {
+            moveFile(index, 1);
+          });
+          
+          li.appendChild(span);
+          li.appendChild(upButton);
+          li.appendChild(downButton);
+          filesListElement.appendChild(li);
+        });
+      }
+      
+      // Function to move a file in the array
+      function moveFile(index, direction) {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= pdfFiles.length) return;
+        // Swap the files
+        [pdfFiles[index], pdfFiles[newIndex]] = [pdfFiles[newIndex], pdfFiles[index]];
+        updateFileList();
+      }
+      
+      // Merge the PDF files when the merge button is clicked
+      mergeButton.addEventListener('click', async () => {
+        if (pdfFiles.length < 2) {
+          alert('Please add at least two PDF files to merge.');
+          return;
+        }
+        
+        try {
+          // Create a new PDF document
+          const mergedPdf = await PDFLib.PDFDocument.create();
+          
+          // Loop through each file in the ordered list, load it, and copy its pages into the merged document
+          for (const file of pdfFiles) {
+            const fileData = await file.arrayBuffer();
+            const pdf = await PDFLib.PDFDocument.load(fileData);
+            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            copiedPages.forEach(page => mergedPdf.addPage(page));
+          }
+          
+          // Save the merged PDF and create a Blob for download
+          const mergedPdfBytes = await mergedPdf.save();
+          const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          
+          // Determine filename from user input
+          let filename = filenameInput.value.trim();
+          if (!filename) {
+            filename = 'merged.pdf';
+          }
+          if (!filename.toLowerCase().endsWith('.pdf')) {
+            filename += '.pdf';
+          }
+          
+          // Create a temporary link and trigger the download
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          // Optionally clear the file list after merging
+          pdfFiles = [];
+          updateFileList();
+        } catch (error) {
+          console.error('Error merging PDFs:', error);
+          alert('An error occurred while merging PDFs. Please check the console for more details.');
+        }
+      });
+    </script>
+  </div>
+</body>
+</html>
